@@ -3,7 +3,9 @@ package data
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"skill_test/models"
+	"skill_test/utils"
 	"sync"
 	"time"
 )
@@ -16,7 +18,8 @@ func (d *db_instance) seed_data(count uint) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			name := fmt.Sprintf("Product-%v", time.Now().Format("20060102-150405-000000"))
+			name := fmt.Sprintf("Product-%v", time.Now().Format("20060102-150405"))
+			name = fmt.Sprintf("%v-%v", name, rand.Intn(10000))
 			d.addData(name, queue)
 		}()
 	}
@@ -34,9 +37,21 @@ func (d *db_instance) seed_data(count uint) {
 }
 
 func (d *db_instance) addData(s string, c chan models.DbSource) {
-	res, err := d.seed_data_source(s)
-	if err != nil {
-		log.Printf("error seed source: %v", err)
+	var res models.DbSource
+	var err error
+	for attempt := 1; attempt <= 3; attempt++ {
+		res, err = d.seed_data_source(s)
+		if err != nil {
+			if utils.IsDeadlockError(err) {
+				log.Printf("Database locked, retrying attempt %d in %v...", attempt, time.Second)
+				time.Sleep(time.Second)
+				continue
+			}
+			log.Printf("Error seeding source: %v", err)
+			break
+		}
+
+		break
 	}
 	c <- res
 }
